@@ -1,40 +1,31 @@
 name: ci/cd pipeline to deploy to tomcat
-on:
+on: 
   push:
-    branches: [ master ]
-
+    branches: master
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: checkout code
         uses: actions/checkout@v3
-
-      - name: Set up JDK 17 (Temurin) and cache maven
+      
+      - name: set-up jdk
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
-          java-version: '17'
-          cache: 'm2'                          # <-- caches ~/.m2 for faster/robust builds
-          cache-dependency-path: '**/pom.xml' # helpful key for cache invalidation
-
-      - name: Show Java version
-        run: java -version
-
-      - name: Build (validate/compile/test/package)
-        run: |
-          mvn -B -V -e clean validate
-          mvn -B -V -e compile
-          mvn -B -V -e test
-          mvn -B -V -e package
-
-      - name: Deploy WAR to Tomcat manager
-        env:
-          TOMCAT_USER: ${{ secrets.TOMCAT_USER }}
-          TOMCAT_PASSWORD: ${{ secrets.TOMCAT_PASSWORD }}
-          TOMCAT_HOST: ${{ secrets.TOMCAT_HOST }}
-        run: |
-          # retry upload (curl retries network/server hiccups)
-          curl -v --retry 5 --retry-delay 5 -u "$TOMCAT_USER:$TOMCAT_PASSWORD" \
-            -T target/TrainBook-1.0.0-SNAPSHOT.war \
-            "http://$TOMCAT_HOST:8080/manager/text/deploy?path=/TrainBook&update=true"
+          java-version: '17'   # Updated Java version
+      - name: validate with maven
+        run: mvn validate
+      - name: compile with maven
+        run: mvn compile
+      - name: test with maven
+        run: mvn test
+      - name: package with maven
+        run: mvn package
+     
+        # Deploy to Tomcat
+      - name: deploy war to tomcat
+        run: | 
+                curl -v -u ${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }} \
+                  -T target/TrainBook-1.0.0-SNAPSHOT.war \
+                  "http://${{ secrets.TOMCAT_HOST }}:8080/manager/text/deploy?path=/TrainBook&update=true"
