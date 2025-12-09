@@ -6,20 +6,20 @@ on:
       - master
 
 jobs:
-  build-deploy:
+  build-publish-deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      # Build, test and SonarQube
+      # Build + test + SonarQube
       - name: Build, Test and SonarQube Scan
         run: |
           mvn clean verify sonar:sonar \
@@ -27,25 +27,27 @@ jobs:
             -Dsonar.host.url="${{ secrets.SONAR_HOST }}" \
             -Dsonar.login="${{ secrets.SONAR_TOKEN }}"
 
-      - name: Verify WAR file exists
+      - name: Verify WAR file
         run: ls -lh target/
 
-      # Publish WAR to Nexus
-      - name: Publish to Nexus
+      # ---------- Publish to Nexus ----------
+      - name: Publish WAR to Nexus
         run: |
-          VERSION=1.0.${{ github.run_number }}
-          mvn deploy:deploy-file \
+          # Example: 1.0.16, 1.0.17, ...
+          VERSION="1.0.${{ github.run_number }}"
+
+          mvn org.apache.maven.plugins:maven-deploy-plugin:3.1.2:deploy-file \
             -Durl=${{ secrets.NEXUS_URL }} \
-            -DrepositoryId=nexus \
-            -Dfile=target/TrainBook-1.0.0-SNAPSHOT.war \
+            -DrepositoryId=${{ secrets.NEXUS_REPO_ID }} \
             -DgroupId=TrainBook \
             -DartifactId=TrainBook \
             -Dversion=$VERSION \
             -Dpackaging=war \
+            -Dfile=target/TrainBook-1.0.0-SNAPSHOT.war \
             -DgeneratePom=true
 
-      # Deploy WAR to Tomcat
-      - name: Deploy to Tomcat
+      # ---------- Deploy to Tomcat ----------
+      - name: Deploy WAR to Tomcat
         run: |
           curl -v -u "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
             -T target/TrainBook-1.0.0-SNAPSHOT.war \
