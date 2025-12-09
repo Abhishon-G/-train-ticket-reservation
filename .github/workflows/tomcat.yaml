@@ -1,6 +1,6 @@
 name: ci/cd pipeline to deploy to tomcat
 
-on:
+on: 
   push:
     branches:
       - master
@@ -12,14 +12,34 @@ jobs:
     steps:
       - name: checkout code
         uses: actions/checkout@v3
-
+      
       - name: set-up jdk
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # Optional, but you like these split – fine
+      # 🔥 SECURE settings.xml injected here
+      - name: Configure Maven settings for Nexus
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml <<EOF
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>nexus</id>
+                <username>${NEXUS_USERNAME}</username>
+                <password>${NEXUS_PASSWORD}</password>
+              </server>
+            </servers>
+          </settings>
+EOF
+        env:
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+
       - name: validate with maven
         run: mvn validate
 
@@ -42,22 +62,13 @@ jobs:
             -Dsonar.host.url="${{ secrets.SONAR_HOST }}" \
             -Dsonar.login="${{ secrets.SONAR_TOKEN }}"
 
+      # 🔥 Nexus Deploy (NOW THIS WILL WORK)
       - name: Publish WAR to Nexus
-        run: |
-          # Uses altDeploymentRepository instead of settings.xml
-          mvn deploy \
-            -DaltDeploymentRepository=nexus::default::http://$NEXUS_USER:$NEXUS_PASSWORD@34.227.67.34:8081/repository/maven-snapshots/
-        env:
-          NEXUS_USER: ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: mvn deploy
 
-      # Deploy WAR to Tomcat
+      # Tomcat Deployment
       - name: Deploy to tomcat
         run: |
-          # Pick the built WAR (your POM creates TrainBook-1.0.0-SNAPSHOT.war)
-          WAR_FILE=$(ls target/*.war | head -n 1)
-          echo "Deploying $WAR_FILE"
-
           curl -v -u "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
-            -T "$WAR_FILE" \
+            -T target/TrainBook-1.0.0-SNAPSHOT.war \
             "http://${{ secrets.TOMCAT_HOST }}:8080/manager/text/deploy?path=/TrainBook&update=true"
