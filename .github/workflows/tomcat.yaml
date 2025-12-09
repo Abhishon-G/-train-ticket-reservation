@@ -1,40 +1,62 @@
 name: ci/cd pipeline to deploy to tomcat
-on: 
+
+on:
   push:
-    branches: master
+    branches:
+      - master
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: checkout code
+      - name: Checkout code
         uses: actions/checkout@v3
-      
-      - name: set-up jdk
+
+      - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'   # Updated Java version
-      - name: validate with maven
+
+      - name: Validate with Maven
         run: mvn validate
-      - name: compile with maven
+
+      - name: Compile with Maven
         run: mvn compile
-      - name: test with maven
+
+      - name: Test with Maven
         run: mvn test
-      - name: package with maven
+
+      - name: Package with Maven
         run: mvn package
 
-      - name: verify WAR file
+      - name: Verify WAR file
         run: ls -lh target/
+
       - name: Build, Test and SonarQube Scan
         run: |
-          mvn clean verify sonar:sonar \
+          mvn sonar:sonar \
             -Dsonar.projectKey=train-ticket-reservation \
             -Dsonar.host.url="${{ secrets.SONAR_HOST }}" \
             -Dsonar.login="${{ secrets.SONAR_TOKEN }}"
-        
-        #Deploy WAR to Tomcat  
-      - name: Deploy to tomcat
+
+      - name: Publish to Nexus
         run: |
-               curl -v -u ${{secrets.TOMCAT_USER}}:${{secrets.TOMCAT_PASSWORD}} \
-                  -T target/TrainBook-1.0.0-SNAPSHOT.war \
-                  "http://${{secrets.TOMCAT_HOST}}:8080/manager/text/deploy?path=/TrainBook&update=true"
+          VERSION=1.0.${{ github.run_number }}
+          mvn deploy:deploy-file \
+            -Durl=${{ secrets.NEXUS_URL }} \
+            -DrepositoryId=maven-snapshots \
+            -Dfile=target/*.war \
+            -DgroupId=TrainBook \
+            -DartifactId=TrainBook \
+            -Dversion=1.0.0-SNAPSHOT \
+            -Dpackaging=war \
+            -DgeneratePom=true
+
+      # Deploy WAR to Tomcat  
+      - name: Deploy to Tomcat
+        run: |
+          curl -v -u "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
+            -T target/TrainBook-1.0.0-SNAPSHOT.war \
+            "http://${{ secrets.TOMCAT_HOST }}:8080/manager/text/deploy?path=/TrainBook&update=true"
