@@ -6,20 +6,35 @@ on:
       - master
 
 jobs:
-  build-publish-deploy:
+  build-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: checkout code
         uses: actions/checkout@v3
 
-      - name: Set up JDK
+      - name: set-up jdk
         uses: actions/setup-java@v3
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
-      # Build + test + SonarQube
+      # Optional, but you like these split – fine
+      - name: validate with maven
+        run: mvn validate
+
+      - name: compile with maven
+        run: mvn compile
+
+      - name: test with maven
+        run: mvn test
+
+      - name: package with maven
+        run: mvn package
+
+      - name: verify WAR file
+        run: ls -lh target/
+
       - name: Build, Test and SonarQube Scan
         run: |
           mvn clean verify sonar:sonar \
@@ -27,28 +42,22 @@ jobs:
             -Dsonar.host.url="${{ secrets.SONAR_HOST }}" \
             -Dsonar.login="${{ secrets.SONAR_TOKEN }}"
 
-      - name: Verify WAR file
-        run: ls -lh target/
-
-      # ---------- Publish to Nexus ----------
       - name: Publish WAR to Nexus
         run: |
-          # Example: 1.0.16, 1.0.17, ...
-          VERSION="1.0.${{ github.run_number }}"
+          # Uses altDeploymentRepository instead of settings.xml
+          mvn deploy \
+            -DaltDeploymentRepository=nexus::default::http://$NEXUS_USER:$NEXUS_PASSWORD@34.227.67.34:8081/repository/maven-snapshots/
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
 
-          mvn org.apache.maven.plugins:maven-deploy-plugin:3.1.2:deploy-file \
-            -Durl=${{ secrets.NEXUS_URL }} \
-            -DrepositoryId=${{ secrets.NEXUS_REPO_ID }} \
-            -DgroupId=TrainBook \
-            -DartifactId=TrainBook \
-            -Dversion=$VERSION \
-            -Dpackaging=war \
-            -Dfile=target/TrainBook-1.0.0-SNAPSHOT.war \
-            -DgeneratePom=true
-
-      # ---------- Deploy to Tomcat ----------
-      - name: Deploy WAR to Tomcat
+      # Deploy WAR to Tomcat
+      - name: Deploy to tomcat
         run: |
+          # Pick the built WAR (your POM creates TrainBook-1.0.0-SNAPSHOT.war)
+          WAR_FILE=$(ls target/*.war | head -n 1)
+          echo "Deploying $WAR_FILE"
+
           curl -v -u "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
-            -T target/TrainBook-1.0.0-SNAPSHOT.war \
+            -T "$WAR_FILE" \
             "http://${{ secrets.TOMCAT_HOST }}:8080/manager/text/deploy?path=/TrainBook&update=true"
