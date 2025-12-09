@@ -19,8 +19,11 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # 🔥 SECURE settings.xml injected here
+      # Create secure Maven settings.xml with Nexus creds
       - name: Configure Maven settings for Nexus
+        env:
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         run: |
           mkdir -p ~/.m2
           cat > ~/.m2/settings.xml <<EOF
@@ -35,10 +38,7 @@ jobs:
               </server>
             </servers>
           </settings>
-EOF
-        env:
-          NEXUS_USERNAME: ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          EOF
 
       - name: validate with maven
         run: mvn validate
@@ -62,11 +62,11 @@ EOF
             -Dsonar.host.url="${{ secrets.SONAR_HOST }}" \
             -Dsonar.login="${{ secrets.SONAR_TOKEN }}"
 
-      # 🔥 Nexus Deploy (NOW THIS WILL WORK)
+      # Deploy to Nexus using distributionManagement in POM
       - name: Publish WAR to Nexus
         run: mvn deploy
 
-      # Tomcat Deployment
+      # Deploy WAR to Tomcat
       - name: Deploy to tomcat
         run: |
           curl -v -u "${{ secrets.TOMCAT_USER }}:${{ secrets.TOMCAT_PASSWORD }}" \
